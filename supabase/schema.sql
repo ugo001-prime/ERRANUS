@@ -9,6 +9,7 @@ create type public.task_status as enum ('open', 'accepted', 'in_progress', 'comp
 create table public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   full_name text not null check (char_length(trim(full_name)) >= 2),
+  username text not null check (username ~ '^[a-z0-9_]{3,24}$'),
   account_type public.account_type not null default 'dual',
   avatar_url text,
   about text,
@@ -19,6 +20,8 @@ create table public.profiles (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+create unique index profiles_username_lower_key on public.profiles (lower(username));
 
 create table public.private_profiles (
   id uuid primary key references public.profiles(id) on delete cascade,
@@ -70,8 +73,8 @@ create table public.reviews (
 create or replace function public.handle_new_user()
 returns trigger language plpgsql security definer set search_path = public as $$
 begin
-  insert into public.profiles (id, full_name, account_type)
-  values (new.id, coalesce(new.raw_user_meta_data ->> 'full_name', 'Erranus member'), coalesce((new.raw_user_meta_data ->> 'account_type')::public.account_type, 'dual'));
+  insert into public.profiles (id, full_name, username, account_type)
+  values (new.id, coalesce(new.raw_user_meta_data ->> 'full_name', 'Erranus member'), lower(new.raw_user_meta_data ->> 'username'), coalesce((new.raw_user_meta_data ->> 'account_type')::public.account_type, 'dual'));
   insert into public.private_profiles (id, phone_number) values (new.id, new.raw_user_meta_data ->> 'phone_number');
   return new;
 end;
@@ -117,5 +120,5 @@ create policy "task participants leave one review" on public.reviews for insert 
 
 -- Do not select phone_number or exact_address from browser queries.
 create view public.public_profiles with (security_invoker = true) as
-select id, full_name, account_type, avatar_url, about, public_area, languages, rating, completed_task_count
+select id, full_name, username, account_type, avatar_url, about, public_area, languages, rating, completed_task_count
 from public.profiles;
