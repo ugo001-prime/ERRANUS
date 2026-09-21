@@ -1,0 +1,10 @@
+node_modules/
+.pnpm-store/
+.toolchain/
+artifacts/
+.expo/
+dist/
+android/
+ios/
+.env
+*.log
