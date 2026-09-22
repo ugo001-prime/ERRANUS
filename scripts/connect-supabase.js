@@ -24,7 +24,7 @@ async function useRemoteSession(user){
   const accounts=JSON.parse(localStorage.erranusAccounts||'{}');
   accounts[user.email]={...(accounts[user.email]||{}),name:profile.full_name||user.user_metadata?.full_name||'Erranus member',username:profile.username||user.user_metadata?.username||'',phone:privateResult?.phone_number||user.user_metadata?.phone_number||'',role:profile.account_type||user.user_metadata?.account_type||'dual',rating:Number(profile.rating||0),completed:Number(profile.completed_task_count||0)};
   localStorage.erranusAccounts=JSON.stringify(accounts);
-  auth={id:user.id,email:user.email,name:accounts[user.email].name,role:accounts[user.email].role,isAdmin:false};
+  auth={id:user.id,email:user.email,name:accounts[user.email].name,role:accounts[user.email].role,isAdmin:false,emailVerified:!!user.email_confirmed_at};
   role=auth.role;
   sessionStorage.erranusAccount=JSON.stringify(auth);
   $('#auth').className='auth'; $('#landing').hidden=true; $('.shell').hidden=false; tab='dashboard';
