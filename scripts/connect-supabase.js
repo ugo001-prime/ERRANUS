@@ -69,7 +69,7 @@ function profile(){const account=getAccounts()[auth.email]||{name:auth.name,phon
 for (const file of files) {
   let html = fs.readFileSync(file, 'utf8');
   if (html.includes('cdn.jsdelivr.net/npm/@supabase/supabase-js@2')) {
-    html = html.replace(/<script>\n\/\/ Supabase uses a publishable browser key[\s\S]*?<\/script><\/body>/, backend + '</body>');
+    html = html.replace(/<script>\n\/\/ Supabase uses a publishable browser key[\s\S]*?<\/script><\/body>/, backend + '<script src="scripts/profile-modal.js"></script></body>');
     fs.writeFileSync(file, html);
   } else {
     html = html.replace('<script>\r\nconst seed=', clientScript + '<script>\r\nconst seed=');
