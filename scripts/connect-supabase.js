@@ -2,6 +2,7 @@ const fs = require('fs');
 
 const files = ['index.html', 'frontend-preview.html'];
 const clientScript = '<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>';
+const profileModalScript = fs.readFileSync('scripts/profile-modal.js', 'utf8');
 const backend = `<script>
 // Supabase uses a publishable browser key. Database access is protected by RLS policies.
 let sb = window.supabase.createClient('https://hfxlpsumohqhjsfjtfkd.supabase.co', 'sb_publishable_cKBepyjHKEi6E5Wh6MYzIg_SnPmLdKs');
@@ -69,7 +70,7 @@ function profile(){const account=getAccounts()[auth.email]||{name:auth.name,phon
 for (const file of files) {
   let html = fs.readFileSync(file, 'utf8');
   if (html.includes('cdn.jsdelivr.net/npm/@supabase/supabase-js@2')) {
-    html = html.replace(/<script>\n\/\/ Supabase uses a publishable browser key[\s\S]*?<\/script><\/body>/, backend + '<script src="scripts/profile-modal.js"></script></body>');
+    html = html.replace(/<script>\n\/\/ Supabase uses a publishable browser key[\s\S]*?<\/script><\/body>/, backend + '<script>' + profileModalScript + '</script></body>');
     fs.writeFileSync(file, html);
   } else {
     html = html.replace('<script>\r\nconst seed=', clientScript + '<script>\r\nconst seed=');
