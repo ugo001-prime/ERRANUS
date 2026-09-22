@@ -2,6 +2,7 @@ const fs = require('fs');
 
 const files = ['index.html', 'frontend-preview.html'];
 const clientScript = '<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>';
+const permanentFooter = '<footer class="site-footer">© 2026 PRIME TECHNOLOGIES INC. All rights reserved.</footer>';
 const profileModalScript = fs.readFileSync('scripts/profile-modal.js', 'utf8');
 const profileOverride = profileModalScript.replace('window.profile = function () {', 'profile = function () {');
 const backend = `<script>
@@ -71,6 +72,11 @@ ${profileOverride}
 
 for (const file of files) {
   let html = fs.readFileSync(file, 'utf8');
+  if (!html.includes('PRIME TECHNOLOGIES INC')) {
+    html = html.includes(clientScript)
+      ? html.replace(clientScript, permanentFooter + clientScript)
+      : html.replace('</body>', permanentFooter + '</body>');
+  }
   if (html.includes('cdn.jsdelivr.net/npm/@supabase/supabase-js@2')) {
     html = html.replace(/<script>\n\/\/ Supabase uses a publishable browser key[\s\S]*?<\/script><\/body>/, backend + '</body>');
     fs.writeFileSync(file, html);
