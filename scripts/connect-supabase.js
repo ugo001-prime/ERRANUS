@@ -17,7 +17,8 @@ async function loadRemoteTasks(){
   tasks=[];
   const {data,error}=await sb.from('tasks').select('*').order('created_at',{ascending:false});
   if(error){console.error(error);render();return;}
-  tasks=data.map(t=>({id:t.id,clientId:t.client_id,workerId:t.worker_id,title:t.title,category:t.category,area:t.public_area,amount:Number(t.amount),duration:t.duration,description:t.description,owner:t.client_id===auth.id?'client':'other',worker:t.worker_id===auth.id?'worker':t.worker_id?'other':undefined,status:statusLabel(t.status),signature:t.worker_signature}));
+  const seenTasks=new Set();
+  tasks=data.map(t=>({id:t.id,clientId:t.client_id,workerId:t.worker_id,title:t.title,category:t.category,area:t.public_area,amount:Number(t.amount),duration:t.duration,description:t.description,owner:t.client_id===auth.id?'client':'other',worker:t.worker_id===auth.id?'worker':t.worker_id?'other':undefined,status:statusLabel(t.status),signature:t.worker_signature})).filter(task=>{const key=[task.clientId,task.workerId||'',task.title,task.category,task.area,task.amount,task.duration,task.description,task.status].join('|');if(seenTasks.has(key))return false;seenTasks.add(key);return true;});
   await loadParticipantProfiles();
   await loadRemoteMessages();
   render();
