@@ -29,6 +29,10 @@
     else {
       const column = { name: 'full_name', location: 'public_area', role: 'account_type' }[field];
       ({ error } = await sb.from('profiles').update({ [column]: value, updated_at: new Date().toISOString() }).eq('id', auth.id));
+      if (!error && field === 'name') {
+        const metadataResult = await sb.auth.updateUser({ data: { full_name: value } });
+        if (metadataResult.error) console.warn('Profile name metadata sync failed:', metadataResult.error.message);
+      }
     }
     if (error) return note(field === 'username' && /duplicate|unique|already exists/i.test(error.message) ? 'Username already taken. Please choose another.' : error.message);
     if (field === 'name') { account.name = value; auth.name = value; }
@@ -41,7 +45,7 @@
   };
 
   window.profile = function () {
-    const account = getAccounts()[auth.email] || { name: auth.name };
+    const account = { ...(getAccounts()[auth.email] || {}), name: auth.name || getAccounts()[auth.email]?.name || '' };
     const posted = tasks.filter(t => t.owner === 'client').length;
     const done = tasks.filter(t => t.status === 'Completed' && (t.owner === 'client' || t.worker === 'worker')).length;
     const verified = auth.emailVerified;

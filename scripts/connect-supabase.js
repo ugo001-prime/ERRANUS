@@ -27,9 +27,12 @@ async function useRemoteSession(user){
   ]);
   const profile=profileResult || {};
   const accounts=JSON.parse(localStorage.erranusAccounts||'{}');
-  accounts[user.email]={...(accounts[user.email]||{}),name:profile.full_name||user.user_metadata?.full_name||user.email.split('@')[0]||'',username:profile.username||user.user_metadata?.username||'',phone:privateResult?.phone_number||user.user_metadata?.phone_number||'',role:profile.account_type||user.user_metadata?.account_type||'dual',rating:Number(profile.rating||0),completed:Number(profile.completed_task_count||0)};
+  // Remove stale copies of this same account before saving the latest server profile.
+  for(const [email,record] of Object.entries(accounts)) if(email!==user.email&&record?.id===user.id) delete accounts[email];
+  const latestAccount={id:user.id,name:profile.full_name||user.user_metadata?.full_name||user.email.split('@')[0]||'',username:profile.username||user.user_metadata?.username||'',phone:privateResult?.phone_number||user.user_metadata?.phone_number||'',role:profile.account_type||user.user_metadata?.account_type||'dual',rating:Number(profile.rating||0),completed:Number(profile.completed_task_count||0)};
+  accounts[user.email]=latestAccount;
   localStorage.erranusAccounts=JSON.stringify(accounts);
-  auth={id:user.id,email:user.email,name:accounts[user.email].name,role:accounts[user.email].role,isAdmin:false,emailVerified:!!user.email_confirmed_at};
+  auth={id:user.id,email:user.email,name:latestAccount.name,role:latestAccount.role,isAdmin:false,emailVerified:!!user.email_confirmed_at};
   role=auth.role;
   sessionStorage.erranusAccount=JSON.stringify(auth);
   $('#auth').className='auth'; $('#landing').hidden=true; $('.shell').hidden=false; tab='dashboard';

@@ -35,9 +35,12 @@ async function useRemoteSession(user){
   ]);
   const profile=profileResult || {};
   const accounts=JSON.parse(localStorage.erranusAccounts||'{}');
-  accounts[user.email]={...(accounts[user.email]||{}),name:profile.full_name||user.user_metadata?.full_name||user.email.split('@')[0]||'',username:profile.username||user.user_metadata?.username||'',phone:privateResult?.phone_number||user.user_metadata?.phone_number||'',role:profile.account_type||user.user_metadata?.account_type||'dual',rating:Number(profile.rating||0),completed:Number(profile.completed_task_count||0)};
+  // Remove stale copies of this same account before saving the latest server profile.
+  for(const [email,record] of Object.entries(accounts)) if(email!==user.email&&record?.id===user.id) delete accounts[email];
+  const latestAccount={id:user.id,name:profile.full_name||user.user_metadata?.full_name||user.email.split('@')[0]||'',username:profile.username||user.user_metadata?.username||'',phone:privateResult?.phone_number||user.user_metadata?.phone_number||'',role:profile.account_type||user.user_metadata?.account_type||'dual',rating:Number(profile.rating||0),completed:Number(profile.completed_task_count||0)};
+  accounts[user.email]=latestAccount;
   localStorage.erranusAccounts=JSON.stringify(accounts);
-  auth={id:user.id,email:user.email,name:accounts[user.email].name,role:accounts[user.email].role,isAdmin:false,emailVerified:!!user.email_confirmed_at};
+  auth={id:user.id,email:user.email,name:latestAccount.name,role:latestAccount.role,isAdmin:false,emailVerified:!!user.email_confirmed_at};
   role=auth.role;
   sessionStorage.erranusAccount=JSON.stringify(auth);
   $('#auth').className='auth'; $('#landing').hidden=true; $('.shell').hidden=false; tab='dashboard';
@@ -121,6 +124,10 @@ function profile(){const account=getAccounts()[auth.email]||{name:auth.name,phon
     else {
       const column = { name: 'full_name', location: 'public_area', role: 'account_type' }[field];
       ({ error } = await sb.from('profiles').update({ [column]: value, updated_at: new Date().toISOString() }).eq('id', auth.id));
+      if (!error && field === 'name') {
+        const metadataResult = await sb.auth.updateUser({ data: { full_name: value } });
+        if (metadataResult.error) console.warn('Profile name metadata sync failed:', metadataResult.error.message);
+      }
     }
     if (error) return note(field === 'username' && /duplicate|unique|already exists/i.test(error.message) ? 'Username already taken. Please choose another.' : error.message);
     if (field === 'name') { account.name = value; auth.name = value; }
@@ -133,7 +140,7 @@ function profile(){const account=getAccounts()[auth.email]||{name:auth.name,phon
   };
 
   profile = function () {
-    const account = getAccounts()[auth.email] || { name: auth.name };
+    const account = { ...(getAccounts()[auth.email] || {}), name: auth.name || getAccounts()[auth.email]?.name || '' };
     const posted = tasks.filter(t => t.owner === 'client').length;
     const done = tasks.filter(t => t.status === 'Completed' && (t.owner === 'client' || t.worker === 'worker')).length;
     const verified = auth.emailVerified;
