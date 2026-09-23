@@ -75,7 +75,7 @@ function messagesInbox(){
   const cards=conversations.map(c=>'<button class="chat-row" type="button" onclick="openConversation(null,&quot;'+c.id+'&quot;)"><span class="chat-avatar">'+safe(initials(c.person.name))+'</span><span class="chat-row-main"><b>'+safe(c.person.name)+'</b><small>'+safe(c.last?.body||'Start a conversation')+'</small></span><span class="chat-row-time">'+messageTime(c.last?.created_at)+'</span></button>').join('');
   return '<div class="chat-inbox"><div class="ey">MESSAGES</div><h1 class="title">Your chats</h1>'+(cards?'<div class="chat-list">'+cards+'</div>':'<div class="card">No chats yet. Open an assigned task and select Message to start a conversation.</div>')+(available.length?'<div class="banner"><b>Task messaging</b><p class="small">Chats are visible only to the client and assigned worker.</p></div>':'')+'</div>';
 }
-function openConversation(name,taskId=current?.id){
+function openConversation(name,taskId=current?.id){activeChatTaskId=taskId||null;
   if(!taskId){tab='messages';render();return note('Choose an assigned task to start messaging.');}
   const task=tasks.find(t=>t.id===taskId),person=conversationPerson(task),thread=remoteMessages.filter(m=>m.task_id===taskId);
   const body=thread.length?thread.map(m=>'<div class="chat-bubble '+(m.sender_id===auth?.id?'outgoing':'incoming')+'">'+safe(m.body)+'<small>'+messageTime(m.created_at)+'</small></div>').join(''):'<p class="small">No messages yet. Start the conversation.</p>';
@@ -104,7 +104,7 @@ async function useRemoteSession(user){
   role=auth.role;
   sessionStorage.erranusAccount=JSON.stringify(auth);
   $('#auth').className='auth'; $('#landing').hidden=true; $('.shell').hidden=false; tab='dashboard';
-  await loadRemoteTasks(); setupTaskUpdates(); render(); $('#appLoader').hidden=true;
+  await loadRemoteTasks(); setupTaskUpdates(); setupMessageUpdates(); render(); $('#appLoader').hidden=true;
 }
 async function authenticate(e){
   e.preventDefault(); const f=new FormData(e.target),email=String(f.get('email')||'').trim().toLowerCase(),password=String(f.get('password')||'');
@@ -136,12 +136,35 @@ async function authenticate(e){
   localStorage.erranusRememberedEmail=email;
   await useRemoteSession(data.user); dbStatus('You are logged in.');
 }
-async function signOut(){if(taskUpdatesChannel){sb.removeChannel(taskUpdatesChannel);taskUpdatesChannel=null;}await sb.auth.signOut();sessionStorage.removeItem('erranusAccount');localStorage.removeItem('erranusSession');auth=null;$('#appLoader').hidden=true;$('#landing').hidden=false;$('.shell').hidden=true;$('#accountTools').innerHTML='';dbStatus('You are signed out.');}
+async function signOut(){if(taskUpdatesChannel){sb.removeChannel(taskUpdatesChannel);taskUpdatesChannel=null;}if(messageUpdatesChannel){sb.removeChannel(messageUpdatesChannel);messageUpdatesChannel=null;}if(messagePollingTimer){clearInterval(messagePollingTimer);messagePollingTimer=null;}await sb.auth.signOut();sessionStorage.removeItem('erranusAccount');localStorage.removeItem('erranusSession');auth=null;$('#appLoader').hidden=true;$('#landing').hidden=false;$('.shell').hidden=true;$('#accountTools').innerHTML='';dbStatus('You are signed out.');}
 async function savePassword(e){e.preventDefault();const f=new FormData(e.target),next=String(f.get('next')||'');if(next!==String(f.get('confirm')||''))return dbStatus('New passwords do not match.');const {error}=await sb.auth.updateUser({password:next});if(error)return dbStatus(error.message);closeModal();dbStatus('Password updated.');}
 async function saveAccount(e){e.preventDefault();const f=new FormData(e.target),name=String(f.get('name')||'').trim(),username=String(f.get('username')||'').trim().toLowerCase(),phone=String(f.get('phone')||'').trim(),accountType=String(f.get('role')||'worker'),about=String(f.get('about')||'').trim(),area=String(f.get('location')||'').trim(),languages=String(f.get('languages')||'').split(',').map(x=>x.trim()).filter(Boolean),nextEmail=String(f.get('email')||'').trim().toLowerCase();if(!/^[a-z0-9_]{3,24}$/.test(username))return dbStatus('Username must use 3–24 letters, numbers or underscores.');const [{error:profileError},{error:privateError}]=await Promise.all([sb.from('profiles').update({full_name:name,username,account_type:accountType,about,public_area:area,languages,updated_at:new Date().toISOString()}).eq('id',auth.id),sb.from('private_profiles').update({phone_number:phone}).eq('id',auth.id)]);if(profileError||privateError)return dbStatus((profileError||privateError).code==='23505'?'That username is already taken.':(profileError||privateError).message);const accounts=JSON.parse(localStorage.erranusAccounts||'{}');accounts[auth.email]={...(accounts[auth.email]||{}),name,username,phone,role:accountType,about,location:area,languages:languages.join(', ')};localStorage.erranusAccounts=JSON.stringify(accounts);auth.name=name;auth.role=accountType;role=accountType;sessionStorage.erranusAccount=JSON.stringify(auth);if(nextEmail&&nextEmail!==auth.email){const {error}=await sb.auth.updateUser({email:nextEmail});if(error)return dbStatus(error.message);dbStatus('Profile saved. Confirm the email sent to your new address before using it to log in.');}else dbStatus('Profile saved.');render();}
 async function postTask(e){e.preventDefault();if(!isClient())return dbStatus('Only Client and Dual accounts can post tasks.');const f=new FormData(e.target);const {error}=await sb.from('tasks').insert({client_id:auth.id,title:String(f.get('title')).trim(),category:String(f.get('category')).trim(),public_area:String(f.get('area')).trim(),amount:Number(f.get('amount')),duration:String(f.get('duration')).trim(),description:String(f.get('description')).trim()});if(error)return dbStatus(error.message);tab='posted';await loadRemoteTasks();dbStatus('Task posted for workers to find.');}
 async function accept(e){e.preventDefault();if(!isWorker())return dbStatus('Only Worker and Dual accounts can accept tasks.');const {error}=await sb.rpc('accept_task',{p_task_id:current.id,p_signature:String(new FormData(e.target).get('name')).trim()});if(error)return dbStatus(error.message);await loadRemoteTasks();dbStatus('Agreement signed. Details unlocked.');}
 async function status(label){const map={'In progress':'in_progress','Completion requested':'completion_requested','Completed':'completed'};const {error}=await sb.rpc('update_task_status',{p_task_id:current.id,p_status:map[label]});if(error)return dbStatus(error.message);await loadRemoteTasks();dbStatus('Task updated: '+label);}
+let messageUpdatesChannel=null;
+let messagePollingTimer=null;
+let activeChatTaskId=null;
+const closeModalForMessages=closeModal;
+closeModal=function(){activeChatTaskId=null;closeModalForMessages();};
+async function refreshMessagesLive(announce=false){
+  const known=new Set(remoteMessages.map(message=>message.id));
+  await loadRemoteMessages();
+  const incoming=remoteMessages.filter(message=>!known.has(message.id)&&message.sender_id!==auth?.id);
+  if(activeChatTaskId)openConversation('',activeChatTaskId);
+  else if(tab==='messages')render();
+  if(announce&&incoming.length)note('New message received.');
+}
+function setupMessageUpdates(){
+  if(messageUpdatesChannel||!auth?.id)return;
+  messageUpdatesChannel=sb.channel('erranus-message-updates-'+auth.id).on('postgres_changes',{event:'INSERT',schema:'public',table:'messages'},async payload=>{
+    if(!tasks.some(task=>task.id===payload.new?.task_id))return;
+    await refreshMessagesLive(payload.new.sender_id!==auth.id);
+  }).subscribe();
+  messagePollingTimer=setInterval(async()=>{
+    if(auth&&!document.hidden&&(activeChatTaskId||tab==='messages'))await refreshMessagesLive(true);
+  },5000);
+}
 let completionRequestIds=new Set();
 let taskUpdatesChannel=null;
 const clientCompletionRequests=()=>tasks.filter(task=>task.owner==='client'&&task.status==='Completion requested');
