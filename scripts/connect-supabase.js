@@ -122,6 +122,29 @@ async function saveAccount(e){e.preventDefault();const f=new FormData(e.target),
 async function postTask(e){e.preventDefault();if(!isClient())return dbStatus('Only Client and Dual accounts can post tasks.');const f=new FormData(e.target);const {error}=await sb.from('tasks').insert({client_id:auth.id,title:String(f.get('title')).trim(),category:String(f.get('category')).trim(),public_area:String(f.get('area')).trim(),amount:Number(f.get('amount')),duration:String(f.get('duration')).trim(),description:String(f.get('description')).trim()});if(error)return dbStatus(error.message);tab='posted';await loadRemoteTasks();dbStatus('Task posted for workers to find.');}
 async function accept(e){e.preventDefault();if(!isWorker())return dbStatus('Only Worker and Dual accounts can accept tasks.');const {error}=await sb.rpc('accept_task',{p_task_id:current.id,p_signature:String(new FormData(e.target).get('name')).trim()});if(error)return dbStatus(error.message);await loadRemoteTasks();dbStatus('Agreement signed. Details unlocked.');}
 async function status(label){const map={'In progress':'in_progress','Completion requested':'completion_requested','Completed':'completed'};const {error}=await sb.rpc('update_task_status',{p_task_id:current.id,p_status:map[label]});if(error)return dbStatus(error.message);await loadRemoteTasks();dbStatus('Task updated: '+label);}
+canEdit = function(task){return !!task && task.owner==='client' && task.status==='Open';};
+window.canDeleteTask = task => !!task && task.owner==='client' && task.status==='Open';
+window.editTask = function(){
+  if(!canEdit(current))return note('Only the client who posted an open task can edit it.');
+  $('#dialog').innerHTML='<button class="secondary close" onclick="openTask(&quot;'+current.id+'&quot;)">Back</button><div class="ey">EDIT TASK</div><h1 class="title">Update task details</h1><form class="form" onsubmit="saveTaskEdit(event)"><label class="field">Task title<input name="title" required value="'+safe(current.title)+'"></label><label class="field">Category<input name="category" required value="'+safe(current.category)+'"></label><label class="field">Public area<input name="area" required value="'+safe(current.area)+'"></label><label class="field">Agreed pay (₦)<input name="amount" type="number" min="1" required value="'+current.amount+'"></label><label class="field">Expected duration<input name="duration" required value="'+safe(current.duration)+'"></label><label class="field">Work required<textarea name="description" required>'+safe(current.description)+'</textarea></label><button>Save changes</button></form>';
+  $('#modal').className='modal open';
+};
+window.saveTaskEdit = async function(e){
+  e.preventDefault(); if(!canEdit(current))return note('This task can no longer be edited.');
+  const f=new FormData(e.target),update={title:String(f.get('title')).trim(),category:String(f.get('category')).trim(),public_area:String(f.get('area')).trim(),amount:Number(f.get('amount')),duration:String(f.get('duration')).trim(),description:String(f.get('description')).trim(),updated_at:new Date().toISOString()};
+  const {error}=await sb.from('tasks').update(update).eq('id',current.id).eq('client_id',auth.id).is('worker_id',null);
+  if(error)return note(error.message); await loadRemoteTasks(); closeModal(); note('Task updated.');
+};
+window.confirmDeleteTask = function(){
+  if(!canDeleteTask(current))return note('Only the client who posted an open task can delete it.');
+  $('#dialog').innerHTML='<button class="secondary close" onclick="openTask(&quot;'+current.id+'&quot;)">Back</button><div class="ey">DELETE TASK</div><h1 class="title">Delete this task?</h1><p class="intro">This removes the open task from workers. This cannot be undone.</p><div class="actions"><button style="background:#a23d35" onclick="deleteTask()">Delete task</button><button class="secondary" onclick="openTask(&quot;'+current.id+'&quot;)">Keep task</button></div>';
+  $('#modal').className='modal open';
+};
+window.deleteTask = async function(){
+  if(!canDeleteTask(current))return note('This task can no longer be deleted.');
+  const id=current.id,{error}=await sb.from('tasks').delete().eq('id',id).eq('client_id',auth.id).is('worker_id',null);
+  if(error)return note(error.message); closeModal(); await loadRemoteTasks(); tab='posted'; note('Task deleted.');
+};
 if(!document.querySelector('#usernameField'))$('#nameField').insertAdjacentHTML('afterend','<label class="field" id="usernameField" hidden>Username<input name="username" autocomplete="username" placeholder="e.g. michael_work"></label>');
 function showRecoveryPassword(){
   authView='newpassword'; $('#auth').className='auth open'; $('#authChoices').hidden=true; $('#authForm').hidden=false; $('#authSwitch').hidden=true;
