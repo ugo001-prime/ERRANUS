@@ -130,9 +130,14 @@ closeModal=function(){activeChatTaskId=null;closeModalForMessages();};
 async function refreshMessagesLive(announce=false){
   const known=new Set(remoteMessages.map(message=>message.id));
   await loadRemoteMessages();
-  const incoming=remoteMessages.filter(message=>!known.has(message.id)&&message.sender_id!==auth?.id);
-  if(activeChatTaskId)openConversation('',activeChatTaskId);
-  else if(tab==='messages')render();
+  const added=remoteMessages.filter(message=>!known.has(message.id));
+  if(!added.length)return;
+  const incoming=added.filter(message=>message.sender_id!==auth?.id);
+  if(activeChatTaskId){
+    const draft=$('.chat-compose input')?.value||'';
+    openConversation('',activeChatTaskId);
+    const input=$('.chat-compose input'); if(input)input.value=draft;
+  } else if(tab==='messages')render();
   if(announce&&incoming.length)note('New message received.');
 }
 function setupMessageUpdates(){
