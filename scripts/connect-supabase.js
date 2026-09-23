@@ -17,8 +17,39 @@ async function loadRemoteTasks(){
   tasks=[];
   const {data,error}=await sb.from('tasks').select('*').order('created_at',{ascending:false});
   if(error){console.error(error);render();return;}
-  tasks=data.map(t=>({id:t.id,title:t.title,category:t.category,area:t.public_area,amount:Number(t.amount),duration:t.duration,description:t.description,owner:t.client_id===auth.id?'client':'other',worker:t.worker_id===auth.id?'worker':t.worker_id?'other':undefined,status:statusLabel(t.status),signature:t.worker_signature}));
+  tasks=data.map(t=>({id:t.id,clientId:t.client_id,workerId:t.worker_id,title:t.title,category:t.category,area:t.public_area,amount:Number(t.amount),duration:t.duration,description:t.description,owner:t.client_id===auth.id?'client':'other',worker:t.worker_id===auth.id?'worker':t.worker_id?'other':undefined,status:statusLabel(t.status),signature:t.worker_signature}));
+  await loadRemoteMessages();
   render();
+}
+let remoteMessages=[];
+async function loadRemoteMessages(){
+  remoteMessages=[];
+  const taskIds=tasks.filter(t=>t.clientId===auth?.id||t.workerId===auth?.id).map(t=>t.id);
+  if(!taskIds.length)return;
+  const {data,error}=await sb.from('messages').select('id,task_id,sender_id,body,created_at').in('task_id',taskIds).order('created_at',{ascending:true});
+  if(error){console.warn('Messages could not load:',error.message);return;}
+  remoteMessages=data||[];
+}
+function taskConversationName(task){return task?.title||'Task conversation';}
+function messagesInbox(){
+  const messageTaskIds=[...new Set(remoteMessages.map(m=>m.task_id))];
+  const conversations=messageTaskIds.map(id=>{const task=tasks.find(t=>t.id===id),thread=remoteMessages.filter(m=>m.task_id===id),last=thread[thread.length-1];return {id,task,last,count:thread.length};});
+  const available=tasks.filter(t=>t.clientId===auth?.id||t.workerId===auth?.id);
+  const cards=conversations.map(c=>{const taskName=safe(taskConversationName(c.task));return '<button class="card click" type="button" onclick="openConversation(null,&quot;'+c.id+'&quot;)"><span class="cat">'+taskName+'</span><p class="small">'+safe(c.last?.body||'')+'</p><b>'+c.count+' message'+(c.count===1?'':'s')+'</b></button>';}).join('');
+  return '<div class="ey">MESSAGES</div><h1 class="title">Your conversations</h1><p class="intro">Messages between a client and assigned worker are recorded here for each task.</p>'+(cards?'<div class="grid">'+cards+'</div>':'<div class="card">No messages yet. Open an assigned task and select Message to start a recorded conversation.</div>')+(available.length?'<div class="banner"><b>Task messaging</b><p class="small">Conversations are available only to the client and assigned worker.</p></div>':'');
+}
+function openConversation(name,taskId=current?.id){
+  if(!taskId){tab='messages';render();return note('Choose an assigned task to start messaging.');}
+  const task=tasks.find(t=>t.id===taskId),thread=remoteMessages.filter(m=>m.task_id===taskId);
+  const body=thread.map(m=>'<p class="small"><b>'+ (m.sender_id===auth?.id?'You':'Other participant') +':</b> '+safe(m.body)+'</p>').join('')||'<p class="small">No messages yet. Start the conversation.</p>';
+  $('#dialog').innerHTML='<button class="secondary close" onclick="closeModal()">Close</button><div class="ey">TASK MESSAGES</div><h1 class="title">'+safe(taskConversationName(task))+'</h1><div class="card">'+body+'</div><form class="form" style="margin-top:14px" onsubmit="sendMessage(event,&quot;'+taskId+'&quot;)""><label class="field">Message<textarea name="message" required maxlength="2000" placeholder="Write a message about this task..."></textarea></label><button>Send message</button></form>';
+  $('#modal').className='modal open';
+}
+async function sendMessage(e,taskId){
+  e.preventDefault();const body=String(new FormData(e.target).get('message')||'').trim();if(!body)return;
+  const {error}=await sb.from('messages').insert({task_id:taskId,sender_id:auth.id,body});
+  if(error)return note(error.message);
+  await loadRemoteMessages();note('Message sent.');openConversation('',taskId);
 }
 async function useRemoteSession(user){
   const [{data:profileResult},{data:privateResult}]=await Promise.all([
