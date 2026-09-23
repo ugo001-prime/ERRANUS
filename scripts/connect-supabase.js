@@ -84,7 +84,7 @@ async function useRemoteSession(user){
   role=auth.role;
   sessionStorage.erranusAccount=JSON.stringify(auth);
   $('#auth').className='auth'; $('#landing').hidden=true; $('.shell').hidden=false; tab='dashboard';
-  await loadRemoteTasks(); setupTaskUpdates(); setupMessageUpdates(); render(); $('#appLoader').hidden=true;
+  await loadRemoteTasks(); setupTaskUpdates(); setupMessageUpdates(); setupProfileUpdates(); render(); $('#appLoader').hidden=true;
 }
 async function authenticate(e){
   e.preventDefault(); const f=new FormData(e.target),email=String(f.get('email')||'').trim().toLowerCase(),password=String(f.get('password')||'');
